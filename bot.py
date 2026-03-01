@@ -33,7 +33,7 @@ except ValueError:
 GROUPS = {
     "frequent": {
         "accounts": ["heyibinance", "binancezh", "binance_boxses"],
-        "interval": 1800  # 30 минут
+        "interval": 180  # 30 минут
     },
     "medium": {
         "accounts": ["Bybit_Official", "Bybit_ZH", "binance"],
@@ -181,3 +181,4 @@ if __name__ == "__main__":
         print(f"💥 Необработанная ошибка: {e}", flush=True)
         traceback.print_exc(file=sys.stdout)
         sys.exit(1)
+
