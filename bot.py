@@ -7,11 +7,10 @@ from datetime import datetime
 from collections import defaultdict
 
 # ====================== ТВОИ НАСТРОЙКИ ======================
-API_KEY = os.getenv("TWITTER_API_KEY")           # ключ с TwitterAPI.io
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")     # токен твоего бота
-CHAT_ID = int(os.getenv("CHAT_ID", "0"))          # твой ID (например, 449160262)
+API_KEY = os.getenv("TWITTER_API_KEY")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+CHAT_ID = int(os.getenv("CHAT_ID", "0"))
 
-# Группы аккаунтов (можешь менять)
 GROUPS = {
     "frequent": {
         "accounts": ["heyibinance", "binancezh", "binance_boxses"],
@@ -19,23 +18,23 @@ GROUPS = {
     },
     "medium": {
         "accounts": ["Bybit_Official", "Bybit_ZH", "binance"],
-        "interval": 17280  # 5 раз в сутки
+        "interval": 17280  # 5 раз/сутки
     },
     "rare": {
         "accounts": ["benbybit", "BybitAnnouncements", "BybitSouthAsia", "BybitPlus"],
-        "interval": 86400  # 1 раз в сутки
+        "interval": 86400  # 1 раз/сутки
     }
 }
 
-# Ключевые слова – если нужно, добавь свои
+# Расширенный список ключевых слов – добавь то, что видишь в твитах
 KEYWORDS = [
     "box", "бокс", "crypto box", "mystery box", "福袋", "red packet",
     "红包", "口令", "загадка", "riddle", "code", "код", "redeem",
-    "big gift", "special", "giveaway", "event", "claim", "bonus"
+    "big gift", "special", "giveaway", "event", "claim", "bonus", "free",
+    "lucky", "抽奖", "奖励", "礼包"
 ]
 # =============================================================
 
-# Служебные переменные
 TARGET_ACCOUNTS = []
 for group in GROUPS.values():
     TARGET_ACCOUNTS.extend(group["accounts"])
@@ -47,9 +46,8 @@ def get_interval_for_user(username):
     for group in GROUPS.values():
         if username in group["accounts"]:
             return group["interval"]
-    return 1800  # по умолчанию 30 мин
+    return 1800
 
-# Разбрасываем время первого запуска
 current_time = time.time()
 for username in TARGET_ACCOUNTS:
     interval = get_interval_for_user(username)
@@ -66,7 +64,6 @@ def get_latest_tweets(username):
             tweets = data.get("tweets", [])
             print(f"📥 @{username}: получил {len(tweets)} твитов")
             for t in tweets:
-                # выводим первые 100 символов каждого твита
                 print(f"   📝 {t.get('text', '')[:100]}...")
             return tweets
         else:
@@ -97,7 +94,7 @@ def main():
     for acc in TARGET_ACCOUNTS:
         print(f"   - @{acc} (интервал: {get_interval_for_user(acc)} сек)")
 
-    # Тестовое сообщение при старте
+    # 🔽 Если хочешь отключить тестовое сообщение, закомментируй следующую строку
     send_to_telegram("✅ Бот запущен и начал мониторинг")
 
     while True:
@@ -122,7 +119,6 @@ def main():
                     continue
 
                 text = tweet.get("text", "")
-                # Проверка ключевых слов
                 if not any(kw in text.lower() for kw in KEYWORDS):
                     print(f"   ⏭️ Твит {tweet_id} не содержит ключевых слов")
                     continue
@@ -146,9 +142,9 @@ def main():
                 send_to_telegram(message)
                 last_tweet_ids[username] = tweet_id
 
-            time.sleep(2)  # пауза между аккаунтами
+            time.sleep(2)
 
-        time.sleep(1)  # маленькая пауза перед новым циклом
+        time.sleep(1)
 
 if __name__ == "__main__":
     main()
