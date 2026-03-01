@@ -6,20 +6,20 @@ import random
 from datetime import datetime
 from collections import defaultdict
 
-# ====================== НАСТРОЙКИ ======================
+# ====================== ТВОИ НАСТРОЙКИ ======================
 API_KEY = os.getenv("TWITTER_API_KEY")           # ключ с TwitterAPI.io
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")     # токен твоего бота
-CHAT_ID = int(os.getenv("CHAT_ID", "0"))          # твой ID
+CHAT_ID = int(os.getenv("CHAT_ID", "0"))          # твой ID (например, 449160262)
 
-# Группы аккаунтов с интервалами (в секундах)
+# Группы аккаунтов (можешь менять)
 GROUPS = {
     "frequent": {
         "accounts": ["heyibinance", "binancezh", "binance_boxses"],
-        "interval": 1800  # ← ИЗМЕНЕНО: 30 минут = 1800 секунд
+        "interval": 1800  # 30 минут
     },
     "medium": {
         "accounts": ["Bybit_Official", "Bybit_ZH", "binance"],
-        "interval": 17280  # 5 раз в сутки (4.8 часа)
+        "interval": 17280  # 5 раз в сутки
     },
     "rare": {
         "accounts": ["benbybit", "BybitAnnouncements", "BybitSouthAsia", "BybitPlus"],
@@ -27,28 +27,27 @@ GROUPS = {
     }
 }
 
-# Общий список аккаунтов
-TARGET_ACCOUNTS = []
-for group in GROUPS.values():
-    TARGET_ACCOUNTS.extend(group["accounts"])
-
-# Ключевые слова
+# Ключевые слова – если нужно, добавь свои
 KEYWORDS = [
     "box", "бокс", "crypto box", "mystery box", "福袋", "red packet",
     "红包", "口令", "загадка", "riddle", "code", "код", "redeem",
-    "big gift", "special", "giveaway"
+    "big gift", "special", "giveaway", "event", "claim", "bonus"
 ]
-# ======================================================
+# =============================================================
+
+# Служебные переменные
+TARGET_ACCOUNTS = []
+for group in GROUPS.values():
+    TARGET_ACCOUNTS.extend(group["accounts"])
 
 last_tweet_ids = defaultdict(int)
 last_check_time = defaultdict(float)
 
 def get_interval_for_user(username):
-    """Возвращает интервал проверки для пользователя"""
     for group in GROUPS.values():
         if username in group["accounts"]:
             return group["interval"]
-    return 1800  # запасной вариант (30 мин)
+    return 1800  # по умолчанию 30 мин
 
 # Разбрасываем время первого запуска
 current_time = time.time()
@@ -57,23 +56,27 @@ for username in TARGET_ACCOUNTS:
     last_check_time[username] = current_time - random.uniform(0, interval)
 
 def get_latest_tweets(username):
-    """Запрос к TwitterAPI.io"""
     url = "https://api.twitterapi.io/twitter/user/latest_tweets"
     headers = {"x-api-key": API_KEY}
     params = {"userName": username, "count": 5}
     try:
         resp = requests.get(url, headers=headers, params=params, timeout=10)
         if resp.status_code == 200:
-            return resp.json().get("tweets", [])
+            data = resp.json()
+            tweets = data.get("tweets", [])
+            print(f"📥 @{username}: получил {len(tweets)} твитов")
+            for t in tweets:
+                # выводим первые 100 символов каждого твита
+                print(f"   📝 {t.get('text', '')[:100]}...")
+            return tweets
         else:
-            print(f"⚠️ Ошибка API для @{username}: {resp.status_code}")
+            print(f"⚠️ Ошибка API для @{username}: {resp.status_code} – {resp.text[:100]}")
             return []
     except Exception as e:
         print(f"⚠️ Ошибка запроса для @{username}: {e}")
         return []
 
 def send_to_telegram(text):
-    """Отправка в Telegram"""
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {
         "chat_id": CHAT_ID,
@@ -82,7 +85,9 @@ def send_to_telegram(text):
         "disable_web_page_preview": True
     }
     try:
-        requests.post(url, json=payload, timeout=10)
+        r = requests.post(url, json=payload, timeout=10)
+        if r.status_code != 200:
+            print(f"⚠️ Telegram ошибка: {r.status_code} – {r.text[:100]}")
     except Exception as e:
         print(f"⚠️ Ошибка отправки в Telegram: {e}")
 
@@ -92,6 +97,9 @@ def main():
     for acc in TARGET_ACCOUNTS:
         print(f"   - @{acc} (интервал: {get_interval_for_user(acc)} сек)")
 
+    # Тестовое сообщение при старте
+    send_to_telegram("✅ Бот запущен и начал мониторинг")
+
     while True:
         now = time.time()
         for username in TARGET_ACCOUNTS:
@@ -100,28 +108,32 @@ def main():
                 continue
 
             last_check_time[username] = now
+            print(f"\n⏳ Проверка @{username} в {datetime.now().strftime('%H:%M:%S')}")
 
-            try:
-                tweets = get_latest_tweets(username)
-                if not tweets:
-                    time.sleep(2)
+            tweets = get_latest_tweets(username)
+            if not tweets:
+                time.sleep(2)
+                continue
+
+            for tweet in tweets:
+                tweet_id = tweet.get("id")
+                if last_tweet_ids[username] >= tweet_id:
+                    print(f"   ⏭️ Твит {tweet_id} уже обработан")
                     continue
 
-                for tweet in tweets:
-                    tweet_id = tweet.get("id")
-                    if last_tweet_ids[username] >= tweet_id:
-                        continue
+                text = tweet.get("text", "")
+                # Проверка ключевых слов
+                if not any(kw in text.lower() for kw in KEYWORDS):
+                    print(f"   ⏭️ Твит {tweet_id} не содержит ключевых слов")
+                    continue
 
-                    text = tweet.get("text", "")
-                    if not any(kw in text.lower() for kw in KEYWORDS):
-                        continue
+                print(f"   ✅ Твит {tweet_id} подходит! Отправляю...")
+                codes = re.findall(r'\b[A-Z0-9]{6,20}\b', text.upper())
+                codes_str = ""
+                if codes:
+                    codes_str = "\n\n🧧 <b>КОДЫ В ПОСТЕ:</b>\n" + "\n".join([f"<code>{c}</code>" for c in codes])
 
-                    codes = re.findall(r'\b[A-Z0-9]{6,20}\b', text.upper())
-                    codes_str = ""
-                    if codes:
-                        codes_str = "\n\n🧧 <b>КОДЫ В ПОСТЕ:</b>\n" + "\n".join([f"<code>{c}</code>" for c in codes])
-
-                    message = f"""
+                message = f"""
 🔥 <b>НОВАЯ РАЗДАЧА / БОКС / ЗАГАДКА</b> от @{username}
 
 {text}
@@ -129,19 +141,14 @@ def main():
 {codes_str}
 🕒 {datetime.now().strftime('%d.%m %H:%M')}
 🔗 https://x.com/{username}/status/{tweet_id}
-                    """.strip()
+                """.strip()
 
-                    send_to_telegram(message)
-                    print(f"✅ Отправлено @{username} – {datetime.now().strftime('%H:%M:%S')}")
+                send_to_telegram(message)
+                last_tweet_ids[username] = tweet_id
 
-                    last_tweet_ids[username] = tweet_id
+            time.sleep(2)  # пауза между аккаунтами
 
-            except Exception as e:
-                print(f"⚠️ Ошибка при обработке @{username}: {e}")
-
-            time.sleep(2)
-
-        time.sleep(1)
+        time.sleep(1)  # маленькая пауза перед новым циклом
 
 if __name__ == "__main__":
     main()
